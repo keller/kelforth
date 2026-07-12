@@ -113,6 +113,10 @@ Lthrow_underflow:
     LOAD x0, msg_underflow
     mov x1, #23
     b Lforth_throw
+Lthrow_divzero:
+    LOAD x0, msg_divzero
+    mov x1, #24
+    b Lforth_throw
 Lforth_throw: // x0=message, x1=length; never returns to the faulting code
     bl write_err
     LOAD x1, err_sp
@@ -357,6 +361,7 @@ prim_div:
     ENTER
     bl dpop
     mov x9, x0
+    cbz x9, Lthrow_divzero // sdiv would silently yield 0
     bl dpop
     sdiv x0, x0, x9
     bl dpush
@@ -365,6 +370,7 @@ prim_mod:
     ENTER
     bl dpop
     mov x9, x0
+    cbz x9, Lthrow_divzero
     bl dpop
     sdiv x10, x0, x9
     msub x0, x10, x9, x0
@@ -510,6 +516,7 @@ _main:
     .section __TEXT,__const
 msg_undefined: .ascii "error: undefined word: "
 msg_underflow: .ascii "error: stack underflow\n"
+msg_divzero: .ascii "error: division by zero\n"
 msg_newline: .ascii "\n"
 msg_lt: .ascii "<"
 msg_stack_sep: .ascii "> "
