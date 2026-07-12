@@ -7,7 +7,7 @@
 \ bootstraps.
 
 \ ------------------------------------------------------ control flow
-\ The crown jewels. if/else/then are not TypeScript — they are three
+\ The crown jewels. if/else/then are not ASM — they are three
 \ one-line Forth definitions.
 \
 \ The kernel gave us:

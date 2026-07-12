@@ -7,7 +7,7 @@
 \ bootstraps.
 
 \ ------------------------------------------------------ control flow
-\ The crown jewels. if/else/then are not TypeScript — they are three
+\ The crown jewels. if/else/then are not ASM — they are three
 \ one-line Forth definitions.
 \
 \ The kernel gave us:
@@ -42,6 +42,7 @@
 : do      ( -- dest )        ['] (do) , here ; immediate
 : loop    ( dest -- )        ['] (loop) , ['] 0branch , , ['] (unloop) , ; immediate
 : +loop   ( dest -- )        ['] (+loop) , ['] 0branch , , ['] (unloop) , ; immediate
+: unloop  ( -- )             (unloop) ;  \ drop the loop frame before an early exit
 
 \ ------------------------------------------------------ stack words
 \ The kernel gave us dup drop swap over rot. Everything else is phrases:
@@ -86,5 +87,6 @@
 
 \ ------------------------------------------------------ output niceties
 
-: space   ( -- )             32 emit ;
+32 constant bl               \ the blank character, by its traditional name
+: space   ( -- )             bl emit ;
 : spaces  ( n -- )           begin dup 0> while space 1- repeat drop ;

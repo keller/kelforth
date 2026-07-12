@@ -5,7 +5,8 @@
 
 
 // libc is used only for open/read/write/close/exit. This final assembly kernel
-// adds does>, recursion, strings, pick, and +loop, then embeds core.fs.
+// adds does>, recursion, strings, keyboard/terminal I/O, pick, and +loop,
+// then embeds core.fs.
     .section __TEXT,__text,regular,pure_instructions
     .p2align 2
 
@@ -846,8 +847,10 @@ prim_space:
     mov w0, #' '
     b write_byte
 prim_bye:
+    ENTER
+    bl terminal_restore
     mov w0, #0
-    b _exit
+    bl _exit
 prim_words:
     ENTER
     stp x19, x20, [sp, #-16]!
@@ -1281,6 +1284,184 @@ prim_bracket_char:
     mov x0, x19
     bl compile_cell
 1: LEAVE
+
+// ------------------------------------------------------- terminal & keyboard
+// macOS terminal mode is delegated to stty. poll(2) makes key? non-blocking;
+// key and accept use ordinary synchronous read(2) calls.
+terminal_raw:
+    ENTER
+    LOAD x1, raw_enabled
+    ldr x2, [x1]
+    cbnz x2, 1f
+    mov w0, #0
+    bl _isatty
+    cbz w0, 1f
+    LOAD x0, command_raw
+    bl _system
+    LOAD x1, raw_enabled
+    mov x2, #1
+    str x2, [x1]
+1:  LEAVE
+
+terminal_restore:
+    ENTER
+    LOAD x1, raw_enabled
+    ldr x2, [x1]
+    cbz x2, 1f
+    LOAD x0, command_sane
+    bl _system
+    LOAD x1, raw_enabled
+    str xzr, [x1]
+1:  LEAVE
+
+prim_key:                          // ( -- char ) blocking, one raw byte
+    ENTER
+    bl terminal_raw
+    LOAD x1, typed_ahead
+    ldr x0, [x1]
+    cmn x0, #1
+    b.eq 1f
+    mov x2, #-1
+    str x2, [x1]
+    bl dpush
+    LEAVE
+1:  mov w0, #0
+    LOAD x1, input_byte
+    mov x2, #1
+    bl _read
+    cmp x0, #1
+    b.ne 2f
+    LOAD x1, input_byte
+    ldrb w0, [x1]
+    bl dpush
+    LEAVE
+2:  mov x0, #-1                  // EOF: a visible sentinel, not a key
+    bl dpush
+    LEAVE
+
+prim_key_query:                    // ( -- flag ) poll without blocking
+    ENTER
+    bl terminal_raw
+    LOAD x1, typed_ahead
+    ldr x0, [x1]
+    cmn x0, #1
+    b.ne 3f
+    LOAD x0, poll_stdin
+    strh wzr, [x0, #6]            // clear revents
+    mov w1, #1                    // one pollfd
+    mov w2, #0                    // zero-millisecond timeout
+    bl _poll
+    cmp w0, #1
+    b.ne 2f
+    LOAD x0, poll_stdin
+    ldrh w1, [x0, #6]
+    tbz w1, #0, 2f                // POLLIN
+    mov w0, #0
+    LOAD x1, input_byte
+    mov x2, #1
+    bl _read
+    cmp x0, #1
+    b.ne 2f
+    LOAD x1, input_byte
+    ldrb w0, [x1]
+    LOAD x1, typed_ahead
+    str x0, [x1]
+3:  mov x0, #-1
+    bl dpush
+    LEAVE
+2:  mov x0, #0
+    bl dpush
+    LEAVE
+
+prim_accept:                       // ( addr max -- len )
+    ENTER
+    stp x19, x20, [sp, #-16]!
+    stp x21, x22, [sp, #-16]!
+    stp x23, x24, [sp, #-16]!
+    bl dpop
+    mov x20, x0                    // maximum length
+    bl dpop
+    mov x19, x0                    // destination cell address
+    mov x21, #0                    // current length
+    LOAD x0, raw_enabled
+    ldr x22, [x0]                  // restore raw mode afterward if needed
+    cbz x22, 1f
+    bl terminal_restore
+1:  cmp x21, x20
+    b.hs 5f
+    LOAD x0, typed_ahead
+    ldr x23, [x0]
+    cmn x23, #1
+    b.eq 2f
+    mov x1, #-1
+    str x1, [x0]
+    b 3f
+2:  mov w0, #0
+    LOAD x1, input_byte
+    mov x2, #1
+    bl _read
+    cmp x0, #1
+    b.ne 5f
+    LOAD x0, input_byte
+    ldrb w23, [x0]
+3:  cmp w23, #10                  // newline ends the accepted line
+    b.eq 5f
+    cmp w23, #13                  // ignore carriage return
+    b.eq 1b
+    add x0, x19, x21
+    mov x1, x23
+    bl memory_store
+    add x21, x21, #1
+    b 1b
+5:  cbz x22, 6f
+    bl terminal_raw
+6:  mov x0, x21
+    bl dpush
+    ldp x23, x24, [sp], #16
+    ldp x21, x22, [sp], #16
+    ldp x19, x20, [sp], #16
+    LEAVE
+
+prim_pad:                          // ( -- addr )
+    mov x0, #65000
+    b dpush
+
+prim_ms:                           // ( milliseconds -- )
+    ENTER
+    bl dpop
+    mov x1, #1000
+    mul x0, x0, x1
+    bl _usleep
+    LEAVE
+
+prim_page:                         // clear screen and home the cursor
+    LOAD x0, ansi_page
+    mov x1, #7
+    b write_buf
+
+prim_at_xy:                        // ( col row -- ) zero-based cursor position
+    ENTER
+    stp x19, x20, [sp, #-16]!
+    bl dpop
+    mov x20, x0                    // row
+    bl dpop
+    mov x19, x0                    // column
+    LOAD x0, ansi_csi
+    mov x1, #2
+    bl write_buf
+    add x0, x20, #1
+    mov w1, #0
+    bl write_number
+    mov w0, #';'
+    bl write_byte
+    add x0, x19, #1
+    mov w1, #0
+    bl write_number
+    mov w0, #'H'
+    bl write_byte
+    ldp x19, x20, [sp], #16
+    LEAVE
+
 // ------------------------------------------------------- dictionary setup
 init_dictionary:
     ENTER
@@ -1385,6 +1566,13 @@ init_dictionary:
     REG name_type, 4, prim_type
     REG name_char, 4, prim_char
     REG name_bracket_char, 6, prim_bracket_char, 1
+    REG name_key, 3, prim_key
+    REG name_key_query, 4, prim_key_query
+    REG name_accept, 6, prim_accept
+    REG name_pad, 3, prim_pad
+    REG name_ms, 2, prim_ms
+    REG name_page, 4, prim_page
+    REG name_at_xy, 5, prim_at_xy
     LEAVE
 // --------------------------------------------------------------------- main
     .globl _main
@@ -1477,6 +1665,9 @@ _main:
 97:
     mov x0, #1
 98:
+    str x0, [sp, #-16]!
+    bl terminal_restore
+    ldr x0, [sp], #16
     ldp x19, x20, [sp], #16
     LEAVE
 // ---------------------------------------------------------------- constants
@@ -1489,6 +1680,10 @@ msg_ok: .ascii " ok\n"
 msg_compiled: .ascii " compiled\n"
 prompt: .ascii "> "
 banner5: .ascii "kelforth asm stage 5 - the playground. Type `bye` to quit, `words` to look around.\n"
+command_raw: .asciz "stty raw -echo"
+command_sane: .asciz "stty sane"
+ansi_page: .byte 27, 91, 50, 74, 27, 91, 72
+ansi_csi: .byte 27, 91
 // Primitive names. Explicit lengths make these zero-termination independent.
 name_lit: .ascii "lit"
 name_branch: .ascii "branch"
@@ -1568,6 +1763,13 @@ name_s_quote: .byte 115, 34
 name_type: .ascii "type"
 name_char: .ascii "char"
 name_bracket_char: .ascii "[char]"
+name_key: .ascii "key"
+name_key_query: .ascii "key?"
+name_accept: .ascii "accept"
+name_pad: .ascii "pad"
+name_ms: .ascii "ms"
+name_page: .ascii "page"
+name_at_xy: .ascii "at-xy"
 core_source:
     .incbin "core.fs"
 core_source_end:
@@ -1599,6 +1801,12 @@ xt_comma: .quad -1
 xt_dotq_runtime: .quad -1
 xt_does_runtime: .quad -1
 xt_squote_runtime: .quad -1
+typed_ahead: .quad -1
+raw_enabled: .quad 0
+poll_stdin: .long 0
+             .short 1             // POLLIN
+             .short 0             // revents
+input_byte: .byte 0
 output_byte: .byte 0
     .p2align 4
 number_buffer: .space 64

@@ -23,7 +23,7 @@ The stages preserve the original conceptual boundaries:
 | `stage2-control-flow` | compiler state, immediate words, branches and loops |
 | `stage3-memory` | unified cell memory and defining words |
 | `stage4-forth-in-forth` | threaded code plus a Forth-defined core |
-| `stage5-playground` | `create ... does>`, recursion and strings |
+| `stage5-playground` | `create ... does>`, recursion, strings, keyboard input and terminal games |
 
 Each stage has a complete, standalone `kelforth.s`. There are no interpreter
 includes: stage 1 is a copy of stage 0 plus words and colon definitions, stage
@@ -34,5 +34,5 @@ interpret their local `core.fs` at startup.
 
 The assembly targets Mach-O on Apple Silicon Macs—specifically the M1 machine
 used to build this project. It uses Apple's leading-underscore C symbols,
-Mach-O sections, and `@PAGE`/`@PAGEOFF` relocations directly. Libc is used only
-for operating-system I/O (`open`, `read`, `write`, `close`, and `exit`).
+Mach-O sections, and `@PAGE`/`@PAGEOFF` relocations directly. The small host
+boundary uses libc for files, terminal polling and timing.

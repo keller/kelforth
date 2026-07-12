@@ -1,9 +1,10 @@
 # Stage 5 — The AArch64 Playground
 
 The kernel-building progression ends here. This stage adds `create ... does>`,
-address/length strings, `recurse`, `pick`, and `+loop`. The examples then use
-the language for algorithms, text processing, and a tiny adventure rather
-than introducing another interpreter architecture.
+address/length strings, `recurse`, `pick`, `+loop`, keyboard input, timing, and
+terminal cursor control. The examples then use the language for algorithms,
+text processing, an adventure, and Snake rather than introducing another
+interpreter architecture.
 
 ## Build and run the examples
 
@@ -13,6 +14,8 @@ make
 ./kelforth examples/strings.fs
 ./kelforth examples/bottles.fs
 ./kelforth examples/adventure.fs
+./kelforth examples/keyboard.fs
+./kelforth examples/snake.fs       # arrows steer; q quits
 ```
 
 Or start the REPL:
@@ -160,6 +163,64 @@ izard
 and compiles that byte through `lit`, exactly like other compile-time literal
 words.
 
+## Keyboard and terminal words
+
+Stage 5 now closes the I/O loop with seven kernel words:
+
+| word | stack effect | behavior |
+| --- | --- | --- |
+| `key` | `( -- char )` | block for one raw, unechoed input byte |
+| `key?` | `( -- flag )` | report whether a byte is ready without blocking |
+| `accept` | `( addr max -- len )` | read a cooked line into Forth memory |
+| `pad` | `( -- addr )` | push the transient buffer address |
+| `ms` | `( n -- )` | wait `n` milliseconds |
+| `page` | `( -- )` | clear the terminal and home the cursor |
+| `at-xy` | `( col row -- )` | move to a zero-based terminal position |
+
+On this M1 Mac, `terminal_raw` uses `isatty` and `stty raw -echo`; the normal
+exit path restores the terminal with `stty sane`. `key?` uses `poll(2)` with a
+zero timeout, then saves a byte in `typed_ahead` so the following `key` can
+consume it:
+
+```asm
+prim_key_query:                    // ( -- flag )
+    bl   terminal_raw
+    LOAD x0, poll_stdin
+    mov  w1, #1                    // one pollfd
+    mov  w2, #0                    // do not wait
+    bl   _poll
+    // if POLLIN: read one byte into typed_ahead and push -1
+    // otherwise: push 0
+```
+
+That one-byte lookahead is what lets a game loop remain entirely in Forth:
+
+```forth
+: steer
+  key? 0= if exit then
+  key
+  dup 27 = if arrow then
+  dup [char] q = if true dead ! then
+  drop ;
+```
+
+Arrow keys arrive as three bytes—escape, `[`, and a direction letter—so
+`snake.fs` uses blocking `key` only after `key?` has detected the first byte.
+
+`at-xy` emits an ANSI cursor-position sequence. It pops row and column, adds
+one because ANSI coordinates are one-based, then writes `ESC[row;colH`:
+
+```asm
+prim_at_xy:                        // ( col row -- )
+    // write ESC[
+    // print row + 1, then ';', then column + 1
+    // write 'H'
+```
+
+`accept` temporarily restores cooked terminal mode so macOS supplies echo and
+line editing. It stores each accepted byte in one Forth cell, making
+`pad 80 accept` produce the same `( addr len )` convention used by `s"`.
+
 ## Explicit recursion
 
 The current dictionary entry remains hidden between `:` and `;`. That allows a
@@ -219,10 +280,14 @@ compiles that runtime helper, a `0branch` back to the body, and `(unloop)`.
 | `strings.fs` | `( addr len )`, `type`, `char`, and substring arithmetic |
 | `bottles.fs` | early `exit`, grammar choices, and repeated text |
 | `adventure.fs` | a program becoming a domain-specific language of commands |
+| `keyboard.fs` | raw `key` input followed by cooked `accept`; its `.in` file makes it testable |
+| `snake.fs` | `key?`, ANSI drawing, `ms`, and a ring buffer that redraws only head and tail |
 
 The adventure is the Forth punchline. After defining `look`, `take`, `north`,
 and `south`, playing the game is just entering words. Programs grow by growing
-the vocabulary in which the final program is stated.
+the vocabulary in which the final program is stated. Snake makes the same
+point for an interactive real-time loop: movement, collision, drawing, input,
+and timing are all Forth definitions above seven small host-facing primitives.
 
 ## Build something next
 
