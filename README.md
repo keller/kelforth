@@ -58,3 +58,16 @@ The design here follows the classic lineage (indirect-threaded code, an
 outer and inner interpreter, a bootstrap file) — the same architecture as
 [jonesforth](https://github.com/nornagon/jonesforth) and, at heart,
 [gforth](https://gforth.org/). Stage 5's README has the reading list.
+
+## Native AArch64 edition
+
+[`asm/`](asm/) rebuilds the same six-stage progression in ARM64/AArch64
+assembly. Each stage produces a native executable and runs the same example
+programs; stages 4 and 5 still bootstrap their higher-level words from
+`core.fs`.
+
+```sh
+cd asm
+make
+make check
+```
