@@ -32,7 +32,9 @@ over .s
 
 ## Change 1: a real dictionary entry
 
-Every dictionary entry occupies 48 bytes:
+Stage 0's word table held just a name, a length, and a code address. User
+definitions need more, so from this stage on every dictionary entry occupies
+48 bytes:
 
 | offset | field | purpose |
 | ---: | --- | --- |

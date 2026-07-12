@@ -32,9 +32,12 @@ Or run a source file:
 
 `kelforth.s` is the complete stage-0 interpreter. Read it top to bottom: host
 I/O wrappers, data-stack operations, source cursor, word table, outer
-interpreter, primitives, startup registration, and storage. Later stages copy
-this whole file and add their next layer, so a side-by-side diff shows exactly
-what each concept costs in assembly.
+interpreter, primitives, startup registration, and storage. Later stages keep
+this same skeleton and add their next layer, so a side-by-side diff shows
+what each concept costs in assembly. Stage 0 is also kept deliberately
+simpler than the later copies: its word table carries only the three fields
+this stage reads, and a runtime error just prints and exits — stage 1
+introduces the full dictionary entry and recoverable errors.
 
 ## The one language idea: the data stack
 
@@ -82,7 +85,7 @@ A pop reverses those operations:
 dpop:                               // returns value in x0
     LOAD x1, dsp
     ldr  x2, [x1]
-    cbz  x2, Lthrow_underflow       // popping an empty stack is an error
+    cbz  x2, Lerror_underflow       // popping an empty stack is an error
     sub  x2, x2, #1
     str  x2, [x1]
     LOAD x3, data_stack
@@ -93,9 +96,10 @@ dpop:                               // returns value in x0
 The `lsl #3` is the machine-level meaning of “cell”: multiplying an index by
 eight to address a 64-bit value. Later, Forth programs use logical cell
 indices, while this shift remains an implementation detail. The `cbz` guard
-takes the nonlocal error path described in [../README.md](../README.md) —
-`5 . .` prints `5` and then `error: stack underflow` instead of reading the
-memory below the stack.
+keeps `5 . .` from reading the memory below the stack: it prints `5`, then
+`error: stack underflow`, and exits with status 1. In stage 0 a stack fault
+is simply fatal; stage 1 replaces this with the recoverable unwind described
+in [../README.md](../README.md).
 
 Do not confuse Forth's data stack with AArch64's `sp`. The hardware stack is
 used for function return addresses and saved registers according to the
@@ -134,9 +138,9 @@ REG name_mod,    3, prim_mod
 REG name_negate, 6, prim_negate
 ```
 
-The `REG` macro passes a name pointer, name length, function address, and
-immediate flag to `define_prim`. Even at stage 0, `+` is not hard-coded into
-the parser: it is an ordinary dictionary entry.
+The `REG` macro passes a name pointer, name length, and function address to
+`define_prim`. Even at stage 0, `+` is not hard-coded into the parser: it is
+an ordinary dictionary entry.
 
 ## The outer interpreter
 
