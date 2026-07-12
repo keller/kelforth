@@ -1,8 +1,8 @@
 # Stage 5 — The Playground
 
 The building is done. This stage rounds off the language — `create ... does>`,
-strings, `recurse` — and then stops adding machinery so you can finally just
-**write Forth**. The examples are small study programs; `EXERCISES.md` is a
+strings, `recurse`, and at last **input**: `key` and `accept` — and then stops
+adding machinery so you can finally just **write Forth**. The examples are small study programs; `EXERCISES.md` is a
 graded path from REPL warm-ups down into kernel surgery.
 
 ## New since stage 4
@@ -39,6 +39,33 @@ everything else is arithmetic (see `examples/strings.fs`, where `tail` is
 just `swap 1+ swap 1-`). `char A` pushes 65; `[char]` is its compile-time
 twin. `."` remains the print-only shortcut.
 
+### Input: `key` and `accept` — and a terminal to play on
+
+Output has been here since stage 0; input closes the loop.
+
+```forth
+key     ( -- char )          wait for one keypress — raw: no echo, no Enter
+key?    ( -- flag )          has a key been pressed yet?
+accept  ( addr max -- len )  read one edited line of input into memory
+```
+
+`accept` pairs with `pad`, a scratch buffer: `pad 80 accept  pad swap type`
+is an echo. Three more words turn the terminal into a canvas — `page`
+clears it, `at-xy ( col row -- )` moves the cursor, `ms ( n -- )` waits:
+
+```forth
+: countdown  5 0 do  page 5 i - .  1000 ms  loop  page ." liftoff!" cr ;
+```
+
+All standard names: `key`, `accept`, `bl` are ANS Forth CORE words;
+`key?` and `pad` are CORE EXT; `ms`, `page`, `at-xy` are FACILITY. (The
+word sets we _didn't_ take: FILE and BLOCK — kelforth reads source files
+from the command line and stops there.) The kernel pays for all of this
+in one section — "terminal & keyboard" in `kelforth.js` — which is where
+the real cost lives: Forth's `key` **blocks**, and the interpreter is one
+synchronous loop, so stdin has to be read synchronously, borrowed back
+from the REPL's readline. The payoff is `examples/snake.fs`.
+
 ### Odds and ends
 
 - `recurse` — call the word being defined. (Its own name is hidden until
@@ -55,6 +82,8 @@ twin. `."` remains the print-only shortcut.
 | `bottles.fs`   | string output with grammar; a `begin/until` song loop                                                                                                                         |
 | `strings.fs`   | the `( addr len )` convention, `char`, string words from arithmetic                                                                                                           |
 | `adventure.fs` | the punchline: a Forth program is a **language**. `look`, `take`, `north` are words — playing the game is typing Forth. Paste the definitions into the REPL and play it live. |
+| `keyboard.fs`  | `key` vs `accept` — raw keypresses and cooked lines. check.js pipes the sibling `keyboard.in` as stdin, which is why an input example is testable at all.                     |
+| `snake.fs`     | snake, in a page of Forth. `key?` steers, `ms` is the clock, and only the head and tail cells are redrawn — the snake is a ring buffer of visited cells. Run it live.         |
 
 Run them with `node kelforth.js examples/<file>.fs`.
 

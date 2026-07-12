@@ -5,6 +5,7 @@
 //     out of the kernel and into core.fs where it belongs)
 //   - strings:  s" ... " and type ;  char and [char]
 //   - recurse, pick, and +loop's runtime
+//   - input at last: key key? accept — plus ms/page/at-xy for games
 //
 // The language is now comfortable enough to just WRITE PROGRAMS in.
 // See examples/ and EXERCISES.md.
@@ -12,13 +13,13 @@
 //   node kelforth.js                 interactive REPL
 //   node kelforth.js examples/x.fs   run a source file
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 // ---------------------------------------------------------------- the stacks
 
-const stack = [];   // data stack
-const rstack = [];  // return stack (threaded-code return addresses)
+const stack = []; // data stack
+const rstack = []; // return stack (threaded-code return addresses)
 
 function push(n) {
   stack.push(n);
@@ -197,7 +198,8 @@ let pendingXt = -1;
 let pendingName = "";
 
 function mustBeCompiling(name) {
-  if (state !== 1) throw new Error(`${name} is compile-only (use it inside a definition)`);
+  if (state !== 1)
+    throw new Error(`${name} is compile-only (use it inside a definition)`);
 }
 
 // ------------------------------------------------------- runtime primitives
@@ -205,10 +207,18 @@ function mustBeCompiling(name) {
 // These exist to BE COMPILED — they read operands inline from the threaded
 // code via ip. core.fs's control-flow words compile them with ['] ... ,
 
-prim("lit",     () => push(mem[checkAddr(ip++)]));                       // push next cell
-prim("branch",  () => { ip = checkAddr(mem[ip]); });                     // jump
-prim("0branch", () => { const t = mem[ip]; if (pop() === 0) ip = checkAddr(t); else ip++; });
-prim("exit",    () => { ip = rpop(); });                                 // return
+prim("lit", () => push(mem[checkAddr(ip++)])); // push next cell
+prim("branch", () => {
+  ip = checkAddr(mem[ip]);
+}); // jump
+prim("0branch", () => {
+  const t = mem[ip];
+  if (pop() === 0) ip = checkAddr(t);
+  else ip++;
+});
+prim("exit", () => {
+  ip = rpop();
+}); // return
 
 const XT_LIT = find("lit");
 const XT_EXIT = find("exit");
@@ -216,11 +226,25 @@ const XT_EXIT = find("exit");
 // ------------------------------------------------------------ the primitives
 
 // stack
-prim("dup",   () => push(peek(0)));
-prim("drop",  () => { pop(); });
-prim("swap",  () => { const b = pop(), a = pop(); push(b); push(a); });
-prim("over",  () => push(peek(1)));
-prim("rot",   () => { const c = pop(), b = pop(), a = pop(); push(b); push(c); push(a); });
+prim("dup", () => push(peek(0)));
+prim("drop", () => {
+  pop();
+});
+prim("swap", () => {
+  const b = pop(),
+    a = pop();
+  push(b);
+  push(a);
+});
+prim("over", () => push(peek(1)));
+prim("rot", () => {
+  const c = pop(),
+    b = pop(),
+    a = pop();
+  push(b);
+  push(c);
+  push(a);
+});
 prim("depth", () => push(stack.length));
 
 // return stack (use with care: it's the actual return stack!)
@@ -233,56 +257,103 @@ prim("r@", () => {
 });
 
 // arithmetic
-prim("+", () => { const b = pop(), a = pop(); push(a + b); });
-prim("-", () => { const b = pop(), a = pop(); push(a - b); });
-prim("*", () => { const b = pop(), a = pop(); push(a * b); });
+prim("+", () => {
+  const b = pop(),
+    a = pop();
+  push(a + b);
+});
+prim("-", () => {
+  const b = pop(),
+    a = pop();
+  push(a - b);
+});
+prim("*", () => {
+  const b = pop(),
+    a = pop();
+  push(a * b);
+});
 prim("/", () => {
-  const b = pop(), a = pop();
+  const b = pop(),
+    a = pop();
   if (b === 0) throw new Error("division by zero");
   push(Math.trunc(a / b));
 });
 prim("mod", () => {
-  const b = pop(), a = pop();
+  const b = pop(),
+    a = pop();
   if (b === 0) throw new Error("division by zero");
   push(a % b);
 });
 
 // comparison & logic (the rest are defined in core.fs)
-prim("=",  () => { const b = pop(), a = pop(); push(a === b ? -1 : 0); });
-prim("<",  () => { const b = pop(), a = pop(); push(a < b ? -1 : 0); });
-prim(">",  () => { const b = pop(), a = pop(); push(a > b ? -1 : 0); });
+prim("=", () => {
+  const b = pop(),
+    a = pop();
+  push(a === b ? -1 : 0);
+});
+prim("<", () => {
+  const b = pop(),
+    a = pop();
+  push(a < b ? -1 : 0);
+});
+prim(">", () => {
+  const b = pop(),
+    a = pop();
+  push(a > b ? -1 : 0);
+});
 prim("0=", () => push(pop() === 0 ? -1 : 0));
-prim("and",    () => { const b = pop(), a = pop(); push(a & b); });
-prim("or",     () => { const b = pop(), a = pop(); push(a | b); });
-prim("xor",    () => { const b = pop(), a = pop(); push(a ^ b); });
+prim("and", () => {
+  const b = pop(),
+    a = pop();
+  push(a & b);
+});
+prim("or", () => {
+  const b = pop(),
+    a = pop();
+  push(a | b);
+});
+prim("xor", () => {
+  const b = pop(),
+    a = pop();
+  push(a ^ b);
+});
 prim("invert", () => push(~pop()));
 
 // memory
-prim("here",  () => push(here));
-prim("allot", () => { here += pop(); });
-prim(",",     () => compile(pop()));
-prim("@",     () => push(mem[checkAddr(pop())]));
-prim("!",     () => { const addr = checkAddr(pop()); mem[addr] = pop(); });
+prim("here", () => push(here));
+prim("allot", () => {
+  here += pop();
+});
+prim(",", () => compile(pop()));
+prim("@", () => push(mem[checkAddr(pop())]));
+prim("!", () => {
+  const addr = checkAddr(pop());
+  mem[addr] = pop();
+});
 
 const XT_COMMA = find(",");
 
 // I/O
-prim(".",    () => write(pop() + " "));
-prim(".s",   () => write(`<${stack.length}> ${stack.join(" ")} `));
+prim(".", () => write(pop() + " "));
+prim(".s", () => write(`<${stack.length}> ${stack.join(" ")} `));
 prim("emit", () => write(String.fromCharCode(pop())));
-prim("cr",   () => write("\n"));
-prim("bye",  () => process.exit(0));
-prim("words", () => { write(words.map((w) => w.name).join(" ")); write("\n"); });
+prim("cr", () => write("\n"));
+prim("bye", () => process.exit(0));
+prim("words", () => {
+  write(words.map((w) => w.name).join(" "));
+  write("\n");
+});
 
 // comments
 prim("\\", () => input.skipUntil("\n"), true);
-prim("(",  () => input.skipUntil(")"), true);
+prim("(", () => input.skipUntil(")"), true);
 
 // counted-loop runtime (do/loop themselves are defined in core.fs!)
 const loopStack = [];
 
 prim("(do)", () => {
-  const index = pop(), limit = pop();
+  const index = pop(),
+    limit = pop();
   loopStack.push({ index, limit });
 });
 prim("(loop)", () => {
@@ -291,14 +362,23 @@ prim("(loop)", () => {
   frame.index++;
   push(frame.index >= frame.limit ? -1 : 0);
 });
-prim("(unloop)", () => { loopStack.pop(); });
+prim("(unloop)", () => {
+  loopStack.pop();
+});
 prim("(+loop)", () => {
   const frame = loopStack[loopStack.length - 1];
   if (!frame) throw new Error("+loop outside do");
   const step = pop();
   frame.index += step;
-  push(step > 0 ? (frame.index >= frame.limit ? -1 : 0)
-                : (frame.index < frame.limit ? -1 : 0));
+  push(
+    step > 0
+      ? frame.index >= frame.limit
+        ? -1
+        : 0
+      : frame.index < frame.limit
+        ? -1
+        : 0,
+  );
 });
 prim("i", () => {
   const frame = loopStack[loopStack.length - 1];
@@ -326,48 +406,75 @@ prim(":", () => {
   state = 1;
 });
 
-prim(";", () => {
-  mustBeCompiling(";");
-  compile(XT_EXIT);
-  dict.set(pendingName.toLowerCase(), pendingXt); // now it becomes findable
-  state = 0;
-}, true);
+prim(
+  ";",
+  () => {
+    mustBeCompiling(";");
+    compile(XT_EXIT);
+    dict.set(pendingName.toLowerCase(), pendingXt); // now it becomes findable
+    state = 0;
+  },
+  true,
+);
 
-prim("immediate", () => { latest.immediate = true; });
+prim("immediate", () => {
+  latest.immediate = true;
+});
 
-prim("[", () => { state = 0; }, true); // drop to interpret state mid-definition
-prim("]", () => { state = 1; });       // and back
+prim(
+  "[",
+  () => {
+    state = 0;
+  },
+  true,
+); // drop to interpret state mid-definition
+prim("]", () => {
+  state = 1;
+}); // and back
 
-prim("literal", () => {                // ( n -- ) compile a push-n
-  mustBeCompiling("literal");
-  compile(XT_LIT);
-  compile(pop());
-}, true);
+prim(
+  "literal",
+  () => {
+    // ( n -- ) compile a push-n
+    mustBeCompiling("literal");
+    compile(XT_LIT);
+    compile(pop());
+  },
+  true,
+);
 
 // ' and ['] turn a name into an execution token; execute runs one.
 // These give core.fs its hands: ['] 0branch , compiles a branch primitive.
 prim("'", () => push(findOrThrow(input.nextToken(), "'")));
 
-prim("[']", () => {
-  mustBeCompiling("[']");
-  const xt = findOrThrow(input.nextToken(), "[']");
-  compile(XT_LIT);
-  compile(xt);
-}, true);
+prim(
+  "[']",
+  () => {
+    mustBeCompiling("[']");
+    const xt = findOrThrow(input.nextToken(), "[']");
+    compile(XT_LIT);
+    compile(xt);
+  },
+  true,
+);
 
 prim("execute", () => executeXt(pop()));
 
-prim("postpone", () => {
-  mustBeCompiling("postpone");
-  const xt = findOrThrow(input.nextToken(), "postpone");
-  if (words[xt].immediate) {
-    compile(xt);                    // immediate word: compile a call to it
-  } else {
-    compile(XT_LIT);                // ordinary word: compile code that will
-    compile(xt);                    // compile a call to it (meta!)
-    compile(XT_COMMA);
-  }
-}, true);
+prim(
+  "postpone",
+  () => {
+    mustBeCompiling("postpone");
+    const xt = findOrThrow(input.nextToken(), "postpone");
+    if (words[xt].immediate) {
+      compile(xt); // immediate word: compile a call to it
+    } else {
+      compile(XT_LIT); // ordinary word: compile code that will
+      compile(xt); // compile a call to it (meta!)
+      compile(XT_COMMA);
+    }
+  },
+  true,
+);
 
 // create — the seed of all defining words. The created word pushes its
 // data address; does> (below) can later attach behavior to it. With the
@@ -385,21 +492,29 @@ prim("create", () => {
 // limit as its runtime behavior — then returns early, since that code
 // belongs to limit now, not to constant.
 const XT_DOES = prim("(does>)", () => {
-  latest.doesAddr = ip;  // latest = the word create just made
-  ip = rpop();           // return from the defining word immediately
+  latest.doesAddr = ip; // latest = the word create just made
+  ip = rpop(); // return from the defining word immediately
 });
 
-prim("does>", () => {
-  mustBeCompiling("does>");
-  compile(XT_DOES);
-}, true);
+prim(
+  "does>",
+  () => {
+    mustBeCompiling("does>");
+    compile(XT_DOES);
+  },
+  true,
+);
 
 // recurse — call the word being defined (its name is hidden until ; so
 // you must ask for it explicitly; that's standard Forth).
-prim("recurse", () => {
-  mustBeCompiling("recurse");
-  compile(pendingXt);
-}, true);
+prim(
+  "recurse",
+  () => {
+    mustBeCompiling("recurse");
+    compile(pendingXt);
+  },
+  true,
+);
 
 // pick: 0 pick = dup, 1 pick = over, n pick copies the nth-from-top
 prim("pick", () => push(peek(pop())));
@@ -413,16 +528,20 @@ const XT_DOTQ = prim('(.")', () => {
   write(s);
 });
 
-prim('."', () => {
-  const text = input.parse('"');
-  if (state === 1) {
-    compile(XT_DOTQ);
-    compile(text.length);
-    for (const ch of text) compile(ch.charCodeAt(0));
-  } else {
-    write(text);
-  }
-}, true);
+prim(
+  '."',
+  () => {
+    const text = input.parse('"');
+    if (state === 1) {
+      compile(XT_DOTQ);
+      compile(text.length);
+      for (const ch of text) compile(ch.charCodeAt(0));
+    } else {
+      write(text);
+    }
+  },
+  true,
+);
 
 // ------------------------------------------------------------------ strings
 //
@@ -431,48 +550,171 @@ prim('."', () => {
 // prints one. s" compiles the characters inline (like ." does) but pushes
 // addr/len at runtime instead of printing.
 
-prim("type", () => {          // ( addr len -- )
-  const len = pop(), addr = pop();
+prim("type", () => {
+  // ( addr len -- )
+  const len = pop(),
+    addr = pop();
   let s = "";
-  for (let k = 0; k < len; k++) s += String.fromCharCode(mem[checkAddr(addr + k)]);
+  for (let k = 0; k < len; k++)
+    s += String.fromCharCode(mem[checkAddr(addr + k)]);
   write(s);
 });
 
-const PAD = MEM_SIZE - 256;   // transient buffer for interpret-state s"
+const PAD = MEM_SIZE - 256; // transient buffer for interpret-state s"
 
 const XT_SQ = prim('(s")', () => {
   const len = mem[checkAddr(ip++)];
-  push(ip);                   // the characters live right here in the code
+  push(ip); // the characters live right here in the code
   push(len);
   ip += len;
 });
 
-prim('s"', () => {
-  const text = input.parse('"');
-  if (state === 1) {
-    compile(XT_SQ);
-    compile(text.length);
-    for (const ch of text) compile(ch.charCodeAt(0));
-  } else {
-    for (let k = 0; k < text.length; k++) mem[PAD + k] = text.charCodeAt(k);
-    push(PAD);
-    push(text.length);
-  }
-}, true);
+prim(
+  's"',
+  () => {
+    const text = input.parse('"');
+    if (state === 1) {
+      compile(XT_SQ);
+      compile(text.length);
+      for (const ch of text) compile(ch.charCodeAt(0));
+    } else {
+      for (let k = 0; k < text.length; k++) mem[PAD + k] = text.charCodeAt(k);
+      push(PAD);
+      push(text.length);
+    }
+  },
+  true,
+);
 
-prim("char", () => {          // char A  ( -- 65 )
+prim("char", () => {
+  // char A  ( -- 65 )
   const t = input.nextToken();
   if (t === null) throw new Error("char needs a character");
   push(t.charCodeAt(0));
 });
 
-prim("[char]", () => {        // compile-time char
-  mustBeCompiling("[char]");
-  const t = input.nextToken();
-  if (t === null) throw new Error("[char] needs a character");
-  compile(XT_LIT);
-  compile(t.charCodeAt(0));
-}, true);
+prim(
+  "[char]",
+  () => {
+    // compile-time char
+    mustBeCompiling("[char]");
+    const t = input.nextToken();
+    if (t === null) throw new Error("[char] needs a character");
+    compile(XT_LIT);
+    compile(t.charCodeAt(0));
+  },
+  true,
+);
+
+// ------------------------------------------------------- terminal & keyboard
+//
+// Everything above writes; these words READ. `key` is one keypress (raw
+// mode: no echo, no waiting for Enter), `accept` is a whole edited line.
+// Forth's `key` blocks, and our interpreter is one synchronous loop — so
+// these read stdin SYNCHRONOUSLY, which takes two tricks in Node:
+//
+//   - the REPL's readline owns stdin, so we pause the stream, read the fd
+//     directly, and hand it back (grabStdin)
+//   - Node keeps a tty fd non-blocking, so a read with no data yet throws
+//     EAGAIN — we nap briefly and retry instead of spinning the CPU
+
+const msleep = (n) =>
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, n);
+
+// One byte from stdin: the byte, null at end of input, or -1 for
+// "nothing yet" when wait is false.
+function readByte(wait) {
+  const buf = Buffer.alloc(1);
+  for (;;) {
+    try {
+      const n = readSync(0, buf, 0, 1);
+      return n > 0 ? buf[0] : null;
+    } catch (err) {
+      if (err.code !== "EAGAIN") throw err;
+      if (!wait) return -1;
+      msleep(8);
+    }
+  }
+}
+
+function grabStdin(body) {
+  const stdin = process.stdin;
+  const wasFlowing = stdin.readableFlowing === true;
+  if (wasFlowing) stdin.pause();
+  try {
+    return body();
+  } finally {
+    if (wasFlowing) stdin.resume();
+  }
+}
+
+const rawMode = (on) => {
+  if (process.stdin.isTTY) process.stdin.setRawMode(on);
+};
+
+let typedAhead = -1; // byte that key? peeked at but key hasn't consumed yet
+
+// key leaves the terminal in raw mode on purpose: a game polling key?
+// every frame must not flip the terminal back to cooked mode between
+// polls (typed keys would be line-buffered and echoed over the board).
+// Node restores the terminal when the process exits.
+prim("key", () => {
+  // ( -- char )  wait for one keypress; no echo
+  if (typedAhead >= 0) {
+    push(typedAhead);
+    typedAhead = -1;
+    return;
+  }
+  const b = grabStdin(() => {
+    rawMode(true);
+    return readByte(true);
+  });
+  if (b === null) throw new Error("key: end of input");
+  push(b);
+});
+
+prim("key?", () => {
+  // ( -- flag )  is a keypress waiting?
+  if (typedAhead < 0) {
+    const b = grabStdin(() => {
+      rawMode(true);
+      return readByte(false);
+    });
+    if (b !== null && b >= 0) typedAhead = b;
+  }
+  push(typedAhead >= 0 ? -1 : 0);
+});
+
+prim("accept", () => {
+  // ( addr max -- len )  read a line of input into memory
+  const max = pop(),
+    addr = pop();
+  let len = 0;
+  grabStdin(() => {
+    const wasRaw = process.stdin.isTTY && process.stdin.isRaw;
+    rawMode(false); // cooked mode: the terminal does echo and line editing
+    while (len < max) {
+      const b = typedAhead >= 0 ? typedAhead : readByte(true);
+      typedAhead = -1;
+      if (b === null || b === 10) break; // end of input, or Enter
+      if (b !== 13) mem[checkAddr(addr + len++)] = b;
+    }
+    rawMode(wasRaw);
+  });
+  push(len);
+});
+
+prim("pad", () => push(PAD)); // ( -- addr )  scratch buffer; accept's friend
+
+// The FACILITY words: enough terminal control for games.
+prim("ms", () => msleep(pop())); // ( n -- )  pause n milliseconds
+prim("page", () => write("\x1b[2J\x1b[H")); // ( -- )  clear screen, cursor home
+prim("at-xy", () => {
+  // ( col row -- )  move the cursor (0,0 is top left)
+  const row = pop(),
+    col = pop();
+  write(`\x1b[${row + 1};${col + 1}H`);
+});
 
 // ---------------------------------------------------------- the interpreter
 
@@ -528,7 +770,9 @@ if (file) {
     process.exit(1);
   }
 } else {
-  write("kelforth stage 5 — the playground. Type `bye` to quit, `words` to look around.\n");
+  write(
+    "kelforth stage 5 — the playground. Type `bye` to quit, `words` to look around.\n",
+  );
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   rl.on("line", (line) => {
     try {

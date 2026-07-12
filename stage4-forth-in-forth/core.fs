@@ -1,13 +1,13 @@
 \ core.fs — kelforth's standard library, WRITTEN IN KELFORTH.
 \
-\ The TypeScript kernel gives us ~50 primitives. This file builds the rest
+\ The JavaScript kernel gives us ~50 primitives. This file builds the rest
 \ of the language out of them, and it loads before you get a prompt.
 \ Read it top to bottom: the order matters, because each word can only use
 \ what exists above it. This is a language pulling itself up by its
 \ bootstraps.
 
 \ ------------------------------------------------------ control flow
-\ The crown jewels. if/else/then are not TypeScript — they are three
+\ The crown jewels. if/else/then are not JavaScript — they are three
 \ one-line Forth definitions.
 \
 \ The kernel gave us:

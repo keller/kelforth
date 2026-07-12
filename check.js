@@ -1,7 +1,9 @@
 // check.js — kelforth's whole test suite.
 //
 // For every stage directory, run each examples/*.fs file with that stage's
-// interpreter and diff stdout against the sibling .out file.
+// interpreter and diff stdout against the sibling .out file. A sibling .in
+// file, when present, is piped to stdin (for examples that use key/accept).
+// An example with no .out at all is an interactive demo and is skipped.
 //
 //   node check.js            run everything
 //   node check.js stage2     run one stage (prefix match)
@@ -30,13 +32,16 @@ for (const stage of stages) {
     const fsPath = join(exDir, file);
     const outPath = fsPath.replace(/\.fs$/, ".out");
     if (!existsSync(outPath)) {
-      console.log(`??   ${stage}/examples/${file} — no .out file`);
+      console.log(`--   ${stage}/examples/${file} — interactive (no .out)`);
       continue;
     }
     const expected = readFileSync(outPath, "utf8");
+    const inPath = fsPath.replace(/\.fs$/, ".in");
+    const opts = { encoding: "utf8" };
+    if (existsSync(inPath)) opts.input = readFileSync(inPath, "utf8");
     let actual;
     try {
-      actual = execFileSync("node", [interp, fsPath], { encoding: "utf8" });
+      actual = execFileSync("node", [interp, fsPath], opts);
     } catch (err) {
       actual = `INTERPRETER ERROR:\n${err.message}`;
     }

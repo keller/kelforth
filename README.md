@@ -28,7 +28,7 @@ we got there and what to play with, plus commented `examples/*.fs`.
 | [stage2-control-flow](stage2-control-flow/)     | a real compiler                                     | interpret vs compile **state**, IMMEDIATE words, how `if` compiles a hole and `then` patches it, `do/loop` |
 | [stage3-memory](stage3-memory/)                 | the data space                                      | cells, `@ ! , here allot`, why `variable`/`constant`/`create` aren't magic                                 |
 | [stage4-forth-in-forth](stage4-forth-in-forth/) | a kernel + [core.fs](stage4-forth-in-forth/core.fs) | threaded code, execution tokens, the return stack — and `if/then/loop` **defined in Forth**                |
-| [stage5-playground](stage5-playground/)         | a comfortable Forth                                 | `create…does>`, strings, `recurse` — then real programs, and [exercises](stage5-playground/EXERCISES.md)   |
+| [stage5-playground](stage5-playground/)         | a comfortable Forth                                 | `create…does>`, strings, the keyboard (`key`, `accept`) — then real programs (snake!), and [exercises](stage5-playground/EXERCISES.md)   |
 
 Suggested pace: one stage at a sitting. Read the stage README, then the
 source (each is a single file, ordered for reading), run the examples, do
@@ -41,7 +41,10 @@ node check.js            # run every stage's examples against expected output
 node check.js stage2     # just one stage
 ```
 
-The expected outputs are the `examples/*.out` files. Stage 4's suite
+The expected outputs are the `examples/*.out` files; a sibling `.in`
+file, when present, is piped to stdin (that's how the input words get
+tested), and examples with no `.out` at all — stage 5's snake — are
+interactive demos, skipped here. Stage 4's suite
 includes the stage 2 and 3 example files _unchanged_ — proof that the
 bootstrapped Forth is the same language.
 

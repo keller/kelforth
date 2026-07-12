@@ -52,9 +52,14 @@ the JavaScript kernel — which is the real graduation.
     memory and prints the names of the words it finds (mind the inline
     operands of `lit`, `branch`, `(.")`...). The single best tool for
     understanding what the compiler actually emits.
-15. **`key` and a real game loop.** Add a `key` primitive that reads one
-    keypress (Node: `process.stdin` in raw mode), then turn
-    `examples/adventure.fs` into a live game that reads commands itself.
+15. **A live adventure.** `key` and `accept` are kernel words now
+    (`examples/snake.fs` got there first), so the game loop is pure
+    Forth: `accept` a line into `pad`, match it against command names,
+    run the match — turn `examples/adventure.fs` into a game that reads
+    its own commands. You'll want a string-equality word
+    `s=` ( a1 l1 a2 l2 -- flag ) first. Kernel variant: add `evaluate`
+    ( addr len -- ), which runs a string as Forth source — the kernel's
+    `interpret()` is 90% of it — and the dispatch problem disappears.
 
 ## Graduation
 
