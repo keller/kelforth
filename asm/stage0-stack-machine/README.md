@@ -82,6 +82,7 @@ A pop reverses those operations:
 dpop:                               // returns value in x0
     LOAD x1, dsp
     ldr  x2, [x1]
+    cbz  x2, Lthrow_underflow       // popping an empty stack is an error
     sub  x2, x2, #1
     str  x2, [x1]
     LOAD x3, data_stack
@@ -91,7 +92,10 @@ dpop:                               // returns value in x0
 
 The `lsl #3` is the machine-level meaning of “cell”: multiplying an index by
 eight to address a 64-bit value. Later, Forth programs use logical cell
-indices, while this shift remains an implementation detail.
+indices, while this shift remains an implementation detail. The `cbz` guard
+takes the nonlocal error path described in [../README.md](../README.md) —
+`5 . .` prints `5` and then `error: stack underflow` instead of reading the
+memory below the stack.
 
 Do not confuse Forth's data stack with AArch64's `sp`. The hardware stack is
 used for function return addresses and saved registers according to the

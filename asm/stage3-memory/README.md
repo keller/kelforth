@@ -41,15 +41,27 @@ cell index to a byte address with `lsl #3`:
 
 ```asm
 memory_load:                        // x0 = cell index
+    tbnz x0, #63, Lthrow_badaddr    // negative index?
+    cmp  x0, #16, lsl #12           // 65536 cells
+    b.hs Lthrow_badaddr
     LOAD x1, forth_memory
     ldr  x0, [x1, x0, lsl #3]
     ret
 
 memory_store:                       // x0 = cell index, x1 = value
+    tbnz x0, #63, Lthrow_badaddr
+    cmp  x0, #16, lsl #12
+    b.hs Lthrow_badaddr
     LOAD x2, forth_memory
     str  x1, [x2, x0, lsl #3]
     ret
 ```
+
+The bounds checks run before `lsl #3` ever participates in an address, so
+`-1 @` reports `error: invalid memory address: -1` (the nonlocal error path
+described in [../README.md](../README.md)) instead of loading eight bytes
+before `forth_memory`. Every memory word funnels through these two routines
+plus `compile_cell`, which is why the checks live here and nowhere else.
 
 Keeping logical cell addresses makes Forth programs easy to inspect: adjacent
 cells are addresses 10 and 11, not byte addresses eight apart. The actual CPU
