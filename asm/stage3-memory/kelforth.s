@@ -42,11 +42,18 @@ write_err:
     mov w0, #2
     b _write
 write_number: // x0=signed value, w1=trailing-space?
+    mov w2, #1
+    b write_number_fd
+write_number_err: // same conversion, to stderr — for error messages with values
+    mov w2, #2
+write_number_fd: // x0=value, w1=trailing-space?, w2=fd
     ENTER
     stp x19, x20, [sp, #-16]!
     stp x21, x22, [sp, #-16]!
+    stp x23, x24, [sp, #-16]!
     mov x19, x0
     mov w20, w1
+    mov w23, w2
     cmp x19, #0
     cset w8, lt
     LOAD x21, number_buffer
@@ -75,9 +82,11 @@ write_number: // x0=signed value, w1=trailing-space?
     mov w6, #'-'
     strb w6, [x22]
 4:
-    mov x0, x22
-    sub x1, x21, x22
-    bl write_buf
+    sub x2, x21, x22
+    mov x1, x22
+    mov w0, w23
+    bl _write
+    ldp x23, x24, [sp], #16
     ldp x21, x22, [sp], #16
     ldp x19, x20, [sp], #16
     LEAVE
@@ -163,8 +172,21 @@ Lthrow_divzero:
     LOAD x0, msg_divzero
     mov x1, #24
     b Lforth_throw
+Lthrow_badaddr: // x0 = the out-of-range cell address
+    mov x19, x0 // safe to clobber: the unwind restores interpret's x19
+    LOAD x0, msg_badaddr
+    mov x1, #31
+    bl write_err
+    mov x0, x19
+    mov w1, #0
+    bl write_number_err
+    LOAD x0, msg_newline
+    mov x1, #1
+    bl write_err
+    b Lforth_unwind
 Lforth_throw: // x0=message, x1=length; never returns to the faulting code
     bl write_err
+Lforth_unwind:
     LOAD x0, state
     str xzr, [x0]
     LOAD x1, err_sp
@@ -378,16 +400,28 @@ find_word: // x0=token,x1=len -> x0=xt or -1
 compile_cell: // x0=value
     LOAD x1, here
     ldr x2, [x1]
+    tbnz x2, #63, Lcompile_oob
+    cmp x2, #16, lsl #12
+    b.hs Lcompile_oob
     LOAD x3, forth_memory
     str x0, [x3, x2, lsl #3]
     add x2, x2, #1
     str x2, [x1]
     ret
+Lcompile_oob:
+    mov x0, x2
+    b Lthrow_badaddr
 memory_load: // x0=cell address -> x0=value
+    tbnz x0, #63, Lthrow_badaddr
+    cmp x0, #16, lsl #12 // 65536 cells
+    b.hs Lthrow_badaddr
     LOAD x1, forth_memory
     ldr x0, [x1, x0, lsl #3]
     ret
 memory_store: // x0=address,x1=value
+    tbnz x0, #63, Lthrow_badaddr
+    cmp x0, #16, lsl #12 // 65536 cells
+    b.hs Lthrow_badaddr
     LOAD x2, forth_memory
     str x1, [x2, x0, lsl #3]
     ret
@@ -638,8 +672,8 @@ prim_div:
     ENTER
     bl dpop
     mov x9, x0
-    cbz x9, Lthrow_divzero // sdiv would silently yield 0
     bl dpop
+    cbz x9, Lthrow_divzero // after both pops (JS pop order); sdiv would silently yield 0
     sdiv x0, x0, x9
     bl dpush
     LEAVE
@@ -647,8 +681,8 @@ prim_mod:
     ENTER
     bl dpop
     mov x9, x0
-    cbz x9, Lthrow_divzero
     bl dpop
+    cbz x9, Lthrow_divzero
     sdiv x10, x0, x9
     msub x0, x10, x9, x0
     bl dpush
@@ -1127,7 +1161,10 @@ prim_fetch:
 prim_store:
     ENTER
     bl dpop
-    mov x19, x0 // address
+    mov x19, x0 // address — checked before the value is popped (JS order)
+    tbnz x0, #63, Lthrow_badaddr
+    cmp x0, #16, lsl #12 // 65536 cells
+    b.hs Lthrow_badaddr
     bl dpop
     mov x1, x0
     mov x0, x19
@@ -1137,6 +1174,9 @@ prim_plus_store:
     ENTER
     bl dpop
     mov x19, x0
+    tbnz x0, #63, Lthrow_badaddr
+    cmp x0, #16, lsl #12 // 65536 cells
+    b.hs Lthrow_badaddr
     bl dpop
     mov x20, x0
     mov x0, x19
@@ -1442,6 +1482,7 @@ _main:
 msg_undefined: .ascii "error: undefined word: "
 msg_underflow: .ascii "error: stack underflow\n"
 msg_divzero: .ascii "error: division by zero\n"
+msg_badaddr: .ascii "error: invalid memory address: "
 msg_runderflow: .ascii "error: return stack underflow\n"
 msg_newline: .ascii "\n"
 msg_lt: .ascii "<"

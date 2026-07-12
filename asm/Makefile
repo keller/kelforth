@@ -15,6 +15,7 @@ $(STAGES):
 
 check: all
 	./check.sh
+	./check-errors.sh
 
 clean:
 	@for stage in $(STAGES); do $(MAKE) -C $$stage clean; done

@@ -361,8 +361,8 @@ prim_div:
     ENTER
     bl dpop
     mov x9, x0
-    cbz x9, Lthrow_divzero // sdiv would silently yield 0
     bl dpop
+    cbz x9, Lthrow_divzero // after both pops (JS pop order); sdiv would silently yield 0
     sdiv x0, x0, x9
     bl dpush
     LEAVE
@@ -370,8 +370,8 @@ prim_mod:
     ENTER
     bl dpop
     mov x9, x0
-    cbz x9, Lthrow_divzero
     bl dpop
+    cbz x9, Lthrow_divzero
     sdiv x10, x0, x9
     msub x0, x10, x9, x0
     bl dpush
