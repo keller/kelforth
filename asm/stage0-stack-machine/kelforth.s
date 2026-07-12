@@ -99,11 +99,27 @@ dpush:
 dpop:
     LOAD x1, dsp
     ldr x2, [x1]
+    cbz x2, Lthrow_underflow
     sub x2, x2, #1
     str x2, [x1]
     LOAD x3, data_stack
     ldr x0, [x3, x2, lsl #3]
     ret
+// A stack fault can strike deep inside nested primitives, so recovery is
+// a throw: print the message, abandon every machine-stack frame below
+// interpret (whose sp was saved at entry), and return 1 from interpret —
+// the same path an undefined word takes.
+Lthrow_underflow:
+    LOAD x0, msg_underflow
+    mov x1, #23
+    b Lforth_throw
+Lforth_throw: // x0=message, x1=length; never returns to the faulting code
+    bl write_err
+    LOAD x1, err_sp
+    ldr x2, [x1]
+    mov sp, x2
+    mov x0, #1
+    b Linterpret_epilogue
 // ------------------------------------------------------------ input source
 set_source: // x0=ptr, x1=len
     LOAD x2, source_ptr
@@ -272,6 +288,9 @@ interpret: // current source -> x0 status
     ENTER
     stp x19, x20, [sp, #-16]!
     stp x21, x22, [sp, #-16]!
+    LOAD x1, err_sp // recovery point for Lforth_throw
+    mov x2, sp
+    str x2, [x1]
 1: bl next_token
     cbz x0, 8f
     mov x19, x0
@@ -303,7 +322,9 @@ interpret: // current source -> x0 status
     mov x0, #1
     b 9f
 8: mov x0, #0
-9: ldp x21, x22, [sp], #16
+9:
+Linterpret_epilogue:
+    ldp x21, x22, [sp], #16
     ldp x19, x20, [sp], #16
     LEAVE
 // ----------------------------------------------------- runtime primitives
@@ -488,6 +509,7 @@ _main:
 // ---------------------------------------------------------------- constants
     .section __TEXT,__const
 msg_undefined: .ascii "error: undefined word: "
+msg_underflow: .ascii "error: stack underflow\n"
 msg_newline: .ascii "\n"
 msg_lt: .ascii "<"
 msg_stack_sep: .ascii "> "
@@ -510,6 +532,7 @@ name_backslash: .ascii "\\"
     .section __DATA,__data
     .p2align 4
 dsp: .quad 0
+err_sp: .quad 0
 dict_count: .quad 0
 source_ptr: .quad 0
 source_len: .quad 0
